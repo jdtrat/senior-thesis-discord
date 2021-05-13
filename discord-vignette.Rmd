@@ -1,0 +1,61 @@
+---
+title: '{discord} flu-preprocess'
+author: "Jonathan Trattner"
+date: "Last compiled on `r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_depth: 4
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    theme: journal
+    highlight: monochrome
+---
+
+```{r}
+library(dplyr)
+library(discord)
+library(NlsyLinks)
+```
+
+For this example, we will be examining the relationship between socioeconomic status and vaccination willingness.The
+
+```{r set-discord-links}
+# Using the NLSYlinks package, let's set the kinship links
+dsLinking <- Links79PairExpanded #set discord links
+dsLinking$R <-dsLinking$RFull #ensure the relationship dsLinking$R is equal to dsLinking$RFull which is the most current/detailed knowledge of relationship status.
+```
+
+```{r create-linked-data}
+
+# Get kinship links for individuals with the following variables:
+link_vars <- c("FLU_total", "FLU_2008", "FLU_2010", "FLU_2012", "FLU_2014", "FLU_2016", "S00_H40", "RACE", "SEX")
+
+df_link <- CreatePairLinksSingleEntered(outcomeDataset = flu_ses_data,
+                                        linksPairDataset = dsLinking[which(dsLinking$RelationshipPath == "Gen1Housemates" & dsLinking$RFull==0.5),],
+                                        outcomeNames = link_vars)
+
+
+# consistent_kin takes the linked data, groups by the sibling pairs and
+# counts the number of responses for FLU each year. If there is an NA, then data is missing for one of the years, so we omit it.
+consistent_kin <- df_link %>% 
+  group_by(SubjectTag_S1, SubjectTag_S2) %>% 
+  count(FLU_2008_S1, FLU_2010_S1, FLU_2012_S1, FLU_2014_S1, FLU_2016_S1,
+        FLU_2008_S2, FLU_2010_S2, FLU_2012_S2, FLU_2014_S2, FLU_2016_S2) %>% 
+  na.omit()
+
+
+flu_modeling_data <- semi_join(df_link, consistent_kin, by = c("SubjectTag_S1", "SubjectTag_S2")) %>%
+  clean_names()
+
+```
+
+```{r preview-flu-modeling-data}
+flu_modeling_data
+```
+
+```{r run-regression}
+discord::discord_regression(flu_modeling_data, outcome = "flu_total", predictors = "s00_h40")
+```
